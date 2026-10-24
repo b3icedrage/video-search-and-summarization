@@ -1,0 +1,6 @@
+# Pipeline outputs
+out/
+
+# Python
+__pycache__/
+*.pyc

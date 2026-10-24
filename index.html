@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>NIM Studio — storyboard → stills → sound → motion</title>
+<meta name="description" content="A full runnable pipeline that turns one line into a short animated clip, using swappable NVIDIA NIM endpoints." />
+<style>
+  :root {
+    --bg: #0b0d0e;
+    --bg-raise: #121517;
+    --bg-card: #15191c;
+    --line: #232a2e;
+    --text: #e7ecef;
+    --muted: #8b979e;
+    --lime: #76b900;
+    --lime-dim: #5c9100;
+    --amber: #ffb02e;
+    --cyan: #4fd6e0;
+    --mono: "SF Mono", "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+    --sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  ::selection { background: var(--lime); color: #0b0d0e; }
+
+  /* ---------- layout ---------- */
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 24px; }
+  section { padding: 88px 0; border-top: 1px solid var(--line); }
+  h2 { font-size: clamp(26px, 3.4vw, 38px); letter-spacing: -0.02em; line-height: 1.15; }
+  .kicker {
+    font-family: var(--mono); font-size: 12px; letter-spacing: 0.18em;
+    text-transform: uppercase; color: var(--lime); margin-bottom: 14px;
+  }
+  .sub { color: var(--muted); max-width: 62ch; margin-top: 14px; }
+
+  /* ---------- nav ---------- */
+  nav {
+    position: sticky; top: 0; z-index: 50;
+    background: rgba(11,13,14,0.86); backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--line);
+  }
+  .nav-in { display: flex; align-items: center; justify-content: space-between; height: 62px; }
+  .logo { display: flex; align-items: center; gap: 10px; font-weight: 700; letter-spacing: -0.01em; }
+  .logo .dot { width: 12px; height: 12px; background: var(--lime); border-radius: 3px; box-shadow: 0 0 14px rgba(118,185,0,.7); }
+  .nav-links { display: flex; gap: 26px; align-items: center; }
+  .nav-links a { color: var(--muted); text-decoration: none; font-size: 14px; transition: color .15s; }
+  .nav-links a:hover { color: var(--text); }
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px; cursor: pointer;
+    font-family: var(--sans); font-size: 14px; font-weight: 600;
+    padding: 10px 18px; border-radius: 8px; border: 1px solid transparent;
+    text-decoration: none; transition: transform .12s, background .15s, border-color .15s;
+  }
+  .btn:active { transform: translateY(1px); }
+  .btn-primary { background: var(--lime); color: #0b0d0e; }
+  .btn-primary:hover { background: #88d100; }
+  .btn-ghost { background: transparent; color: var(--text); border-color: var(--line); }
+  .btn-ghost:hover { border-color: var(--lime); color: var(--lime); }
+  .btn:disabled { opacity: .45; cursor: not-allowed; }
+
+  /* ---------- hero ---------- */
+  .hero { padding: 96px 0 88px; border-top: none; position: relative; overflow: hidden; }
+  .hero::before {
+    content: ""; position: absolute; inset: 0;
+    background:
+      radial-gradient(600px 320px at 78% 8%, rgba(118,185,0,.10), transparent 65%),
+      linear-gradient(rgba(35,42,46,.35) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(35,42,46,.35) 1px, transparent 1px);
+    background-size: auto, 44px 44px, 44px 44px;
+    mask-image: linear-gradient(to bottom, rgba(0,0,0,.9), transparent 78%);
+    pointer-events: none;
+  }
+  .hero-in { position: relative; }
+  .badge {
+    display: inline-flex; gap: 8px; align-items: center;
+    font-family: var(--mono); font-size: 12px; color: var(--lime);
+    border: 1px solid rgba(118,185,0,.4); background: rgba(118,185,0,.08);
+    border-radius: 999px; padding: 5px 14px; margin-bottom: 26px;
+  }
+  h1 {
+    font-size: clamp(38px, 6vw, 68px); line-height: 1.04;
+    letter-spacing: -0.035em; font-weight: 800; max-width: 17ch;
+  }
+  h1 em { font-style: normal; color: var(--lime); }
+  .hero p { margin-top: 22px; font-size: clamp(16px, 1.6vw, 19px); color: var(--muted); max-width: 60ch; }
+  .cta { display: flex; gap: 14px; margin-top: 34px; flex-wrap: wrap; }
+
+  /* flow strip */
+  .flow { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 64px; }
+  .flow-step {
+    background: var(--bg-card); border: 1px solid var(--line); border-radius: 12px;
+    padding: 18px; position: relative; transition: border-color .2s, transform .2s;
+  }
+  .flow-step:hover { border-color: var(--lime-dim); transform: translateY(-3px); }
+  .flow-step .n { font-family: var(--mono); font-size: 11px; color: var(--lime); letter-spacing: .14em; }
+  .flow-step h3 { font-size: 15px; margin: 8px 0 6px; }
+  .flow-step p { font-size: 13px; color: var(--muted); line-height: 1.5; }
+  .flow-step .arrow {
+    position: absolute; right: -14px; top: 50%; transform: translateY(-50%);
+    color: var(--line); font-size: 18px; z-index: 2;
+  }
+  .flow-step:last-child .arrow { display: none; }
+
+  /* ---------- layers ---------- */
+  .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 18px; margin-top: 44px; }
+  .card {
+    background: var(--bg-card); border: 1px solid var(--line);
+    border-radius: 14px; padding: 26px;
+  }
+  .card h3 { font-size: 17px; display: flex; align-items: center; gap: 10px; }
+  .card h3 .idx {
+    font-family: var(--mono); font-size: 12px; color: #0b0d0e;
+    background: var(--lime); border-radius: 5px; padding: 2px 7px;
+  }
+  .card p { color: var(--muted); font-size: 14.5px; margin-top: 12px; }
+  .chip {
+    display: inline-block; font-family: var(--mono); font-size: 11.5px;
+    background: var(--bg-raise); border: 1px solid var(--line); color: var(--cyan);
+    border-radius: 6px; padding: 3px 9px; margin: 12px 6px 0 0;
+  }
+  .chip.warn { color: var(--amber); }
+
+  /* ---------- playground ---------- */
+  .lab {
+    margin-top: 44px; background: var(--bg-raise); border: 1px solid var(--line);
+    border-radius: 16px; overflow: hidden;
+  }
+  .lab-bar {
+    display: flex; align-items: center; gap: 8px;
+    padding: 12px 18px; border-bottom: 1px solid var(--line); background: var(--bg-card);
+  }
+  .lab-bar .tl { width: 11px; height: 11px; border-radius: 50%; background: #2a3236; }
+  .lab-bar .name { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-left: 8px; }
+  .lab-body { padding: 26px; }
+  .field { display: flex; flex-direction: column; gap: 7px; margin-bottom: 16px; }
+  .field label { font-family: var(--mono); font-size: 11.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+  input[type="text"], input[type="password"], textarea {
+    background: var(--bg); border: 1px solid var(--line); color: var(--text);
+    border-radius: 9px; padding: 12px 14px; font-size: 15px; font-family: var(--sans);
+    outline: none; transition: border-color .15s;
+  }
+  input:focus, textarea:focus { border-color: var(--lime); }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .lab-actions { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+  .note { font-size: 12.5px; color: var(--muted); font-family: var(--mono); }
+
+  .shots { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 14px; margin-top: 24px; }
+  .shot {
+    background: var(--bg-card); border: 1px solid var(--line); border-radius: 12px;
+    padding: 16px; animation: rise .3s ease both;
+  }
+  @keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+  .shot .sid { font-family: var(--mono); font-size: 11px; color: var(--lime); letter-spacing: .12em; }
+  .shot .scene { font-size: 14px; font-weight: 600; margin: 8px 0; }
+  .shot .cam { font-family: var(--mono); font-size: 11.5px; color: var(--cyan); }
+  .shot .prompt { font-size: 12.5px; color: var(--muted); margin-top: 8px; line-height: 1.45; }
+  .sfx { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 6px; }
+  .sfx span {
+    font-size: 11px; font-family: var(--mono); color: var(--amber);
+    border: 1px dashed rgba(255,176,46,.45); border-radius: 999px; padding: 2px 9px;
+  }
+  #log {
+    margin-top: 22px; background: #07090a; border: 1px solid var(--line); border-radius: 10px;
+    padding: 14px 16px; font-family: var(--mono); font-size: 12.5px; color: #9fb0b8;
+    min-height: 74px; max-height: 210px; overflow-y: auto; white-space: pre-wrap;
+  }
+  #log .ok { color: var(--lime); }
+  #log .err { color: #ff6b6b; }
+  #log .info { color: var(--cyan); }
+
+  /* ---------- quickstart ---------- */
+  .term {
+    margin-top: 36px; background: #07090a; border: 1px solid var(--line);
+    border-radius: 14px; overflow: hidden;
+  }
+  .term .term-bar {
+    padding: 10px 16px; border-bottom: 1px solid var(--line);
+    font-family: var(--mono); font-size: 12px; color: var(--muted);
+    display: flex; justify-content: space-between;
+  }
+  .term pre { padding: 20px; font-family: var(--mono); font-size: 13.5px; line-height: 1.7; overflow-x: auto; color: #cdd8de; }
+  .term pre .c { color: #5f6f77; }
+  .term pre .g { color: var(--lime); }
+  .copy {
+    background: transparent; border: 1px solid var(--line); color: var(--muted);
+    border-radius: 6px; font-family: var(--mono); font-size: 11px; cursor: pointer; padding: 3px 10px;
+  }
+  .copy:hover { color: var(--lime); border-color: var(--lime); }
+
+  footer { padding: 44px 0 60px; color: var(--muted); font-size: 13.5px; }
+  footer .wrap { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+
+  @media (max-width: 780px) {
+    .flow { grid-template-columns: 1fr 1fr; }
+    .flow-step .arrow { display: none; }
+    .row { grid-template-columns: 1fr; }
+    .nav-links a:not(.btn) { display: none; }
+    section { padding: 64px 0; }
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="wrap nav-in">
+    <div class="logo"><span class="dot"></span> NIM&nbsp;Studio</div>
+    <div class="nav-links">
+      <a href="#layers">Architecture</a>
+      <a href="#lab">Playground</a>
+      <a href="#quickstart">Quickstart</a>
+      <a class="btn btn-primary" href="#lab">Try it</a>
+    </div>
+  </div>
+</nav>
+
+<!-- ============ HERO ============ -->
+<header class="hero">
+  <div class="wrap hero-in">
+    <span class="badge">● one key · four swappable endpoints · no startups</span>
+    <h1>One line in. A rendered <em>animated clip</em> out.</h1>
+    <p>
+      NIM Studio runs the whole storyboard-to-screen workflow on NVIDIA NIM endpoints:
+      an LLM writes the structured storyboard, SDXL / FLUX.1 render consistent character
+      stills, the audio layer writes SFX cues (plus optional TTS narration), and FFmpeg
+      gives the stills camera motion and stitches them into a clip.
+    </p>
+    <div class="cta">
+      <a class="btn btn-primary" href="#lab">Open the playground →</a>
+      <a class="btn btn-ghost" href="#quickstart">Run it locally</a>
+    </div>
+
+    <div class="flow">
+      <div class="flow-step">
+        <div class="n">01 / DIRECTOR</div>
+        <h3>Storyboard JSON</h3>
+        <p>Llama-3.3 / Nemotron writes shots, prompts, camera moves and SFX lines.</p>
+        <span class="arrow">→</span>
+      </div>
+      <div class="flow-step">
+        <div class="n">02 / VISUAL</div>
+        <h3>Consistent stills</h3>
+        <p>FLUX.1 or SDXL renders one styled frame per shot with a shared art direction.</p>
+        <span class="arrow">→</span>
+      </div>
+      <div class="flow-step">
+        <div class="n">03 / AUDIO</div>
+        <h3>SFX + narration</h3>
+        <p>A timestamped SFX cue sheet; Magpie TTS voiceover when you ask for it.</p>
+        <span class="arrow">→</span>
+      </div>
+      <div class="flow-step">
+        <div class="n">04 / COMPOSITE</div>
+        <h3>Zoom, fade, done</h3>
+        <p>FFmpeg adds push-ins and cross-fades — no heavy video diffusion needed.</p>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- ============ LAYERS ============ -->
+<section id="layers">
+  <div class="wrap">
+    <div class="kicker">The architecture</div>
+    <h2>Four layers, every endpoint swappable</h2>
+    <p class="sub">
+      Each layer is its own adapter with the model ID in configuration. Swap models by
+      changing one environment variable — the same free <span style="font-family:var(--mono);color:var(--cyan)">nvapi-…</span> key
+      authenticates all of them.
+    </p>
+
+    <div class="grid2">
+      <div class="card">
+        <h3><span class="idx">1</span> Director Layer</h3>
+        <p>
+          Generates the structured JSON storyboard: shots, durations, camera moves,
+          self-contained image prompts that repeat the style string for consistency,
+          narration text, and per-shot SFX descriptions. JSON mode is requested and
+          a fence-tolerant parser backs it up.
+        </p>
+        <span class="chip">meta/llama-3.3-70b-instruct</span>
+        <span class="chip">nvidia/llama-3.3-nemotron-super-49b-v1.5</span>
+      </div>
+
+      <div class="card">
+        <h3><span class="idx">2</span> Visual Generation</h3>
+        <p>
+          One still per shot from the Director's prompts, on NVIDIA's image route
+          (a different base URL than chat). The decoder accepts every known response
+          shape — base64 artifacts, <code style="font-family:var(--mono);font-size:13px">b64_json</code>,
+          or a URL — since the hosted schema isn't fully documented.
+        </p>
+        <span class="chip">black-forest-labs/flux.1-schnell</span>
+        <span class="chip">stabilityai/stable-diffusion-xl</span>
+      </div>
+
+      <div class="card">
+        <h3><span class="idx">3</span> Audio / Voice</h3>
+        <p>
+          Written honestly: hosted audio models do speech and transcription, not squish
+          sound effects. So this layer emits a timestamped SFX cue sheet (with a drop-in
+          path per cue) and renders voiceover narration through Magpie TTS when requested.
+        </p>
+        <span class="chip">magpie-tts-multilingual</span>
+        <span class="chip warn">SFX = descriptions + file hooks</span>
+      </div>
+
+      <div class="card">
+        <h3><span class="idx">4</span> Animation Composite</h3>
+        <p>
+          Full video diffusion is skipped on purpose. Each still gets a camera move via
+          <code style="font-family:var(--mono);font-size:13px">zoompan</code>, shots are
+          cross-faded, and narration is trimmed and padded to the clip length. If ffmpeg
+          is missing, a ready-to-run command script is written instead.
+        </p>
+        <span class="chip">ffmpeg · libx264 · 1280×720 · 24fps</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PLAYGROUND ============ -->
+<section id="lab">
+  <div class="wrap">
+    <div class="kicker">Playground</div>
+    <h2>Direct the first act, right here</h2>
+    <p class="sub">
+      The Director call runs straight from your browser. Paste a key to make a real
+      storyboard, or run the offline sample to see the shape of the output.
+      Keys stay in this browser (localStorage) and are only sent to NVIDIA.
+    </p>
+
+    <div class="lab">
+      <div class="lab-bar">
+        <span class="tl"></span><span class="tl"></span><span class="tl"></span>
+        <span class="name">director · integrate.api.nvidia.com/v1/chat/completions</span>
+      </div>
+      <div class="lab-body">
+        <div class="row">
+          <div class="field">
+            <label for="concept">Concept</label>
+            <input type="text" id="concept" value="a curious slime monster discovers a ramen shop" />
+          </div>
+          <div class="field">
+            <label for="key">NVIDIA API key (nvapi-…, optional)</label>
+            <input type="password" id="key" placeholder="leave empty for the offline sample" autocomplete="off" />
+          </div>
+        </div>
+        <div class="field">
+          <label for="model">Director model</label>
+          <input type="text" id="model" value="meta/llama-3.3-70b-instruct" />
+        </div>
+
+        <div class="lab-actions">
+          <button class="btn btn-primary" id="run">Generate storyboard</button>
+          <button class="btn btn-ghost" id="still">Render one still (FLUX)</button>
+          <span class="note" id="mode">mode: offline sample</span>
+        </div>
+
+        <div class="shots" id="shots"></div>
+        <div id="log"><span class="info">› ready.</span> Generate a storyboard to begin.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ QUICKSTART ============ -->
+<section id="quickstart">
+  <div class="wrap">
+    <div class="kicker">Quickstart</div>
+    <h2>Run the full pipeline locally</h2>
+    <p class="sub">
+      The dry run works with no key at all — placeholder stills, a canned storyboard,
+      and a real rendered clip. Add a key when you want live models.
+    </p>
+
+    <div class="term">
+      <div class="term-bar"><span>~ / nim-studio</span><button class="copy" id="copyBtn">copy</button></div>
+      <pre id="cmds"><span class="c"># 1. dependencies (ffmpeg on PATH for the composite)</span>
+pip install -r requirements.txt
+
+<span class="c"># 2. offline dry-run — no key, still renders out/clip.mp4</span>
+<span class="g">python run_pipeline.py</span> "a curious slime monster discovers a ramen shop"
+
+<span class="c"># 3. live: get a free nvapi-… key at build.nvidia.com</span>
+<span class="g">export NVIDIA_API_KEY=nvapi-…</span>
+<span class="g">python run_pipeline.py</span> "your idea" --live            <span class="c"># storyboard + stills</span>
+<span class="g">python run_pipeline.py</span> "your idea" --live --narrate  <span class="c"># + TTS voiceover</span>
+
+<span class="c"># swap models without touching code</span>
+<span class="g">DIRECTOR_MODEL=meta/llama-3.1-70b-instruct \
+IMAGE_MODEL=stabilityai/stable-diffusion-xl \
+python run_pipeline.py</span> "your idea" --live</pre>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <span>NIM Studio — storyboard → stills → sound → motion</span>
+    <span style="font-family:var(--mono);font-size:12px">single file · no build · no tracking</span>
+  </div>
+</footer>
+
+<script>
+(function () {
+  "use strict";
+  const $ = (id) => document.getElementById(id);
+  const log = (msg, cls) => {
+    const el = $("log");
+    const line = document.createElement("div");
+    line.className = cls || "";
+    line.textContent = "› " + msg;
+    el.appendChild(line);
+    el.scrollTop = el.scrollHeight;
+  };
+
+  const KEY_FIELD = $("key");
+  KEY_FIELD.value = localStorage.getItem("nim_api_key") || "";
+  KEY_FIELD.addEventListener("change", () => {
+    if (KEY_FIELD.value.trim()) localStorage.setItem("nim_api_key", KEY_FIELD.value.trim());
+    else localStorage.removeItem("nim_api_key");
+    updateMode();
+  });
+
+  const modelField = $("model");
+  function updateMode() {
+    $("mode").textContent = KEY_FIELD.value.trim()
+      ? "mode: live · " + modelField.value.trim()
+      : "mode: offline sample";
+  }
+  modelField.addEventListener("input", updateMode);
+  updateMode();
+
+  /* ---- offline sample (mirrors pipeline/director.py sample_storyboard) ---- */
+  function sampleStoryboard(concept) {
+    const style = "3D cartoon render, soft studio lighting, saturated colors, clay-shaded";
+    const beats = [
+      ["A curious blob peeks out from behind a giant mushroom", "slow push-in", ["boing", "sniff"]],
+      ["The blob spots a bowl of glowing noodles", "pan right", ["rumble", "shimmer"]],
+      ["It lunges and slurps, cheeks bulging", "quick zoom-in", ["slurp", "squeak"]],
+      ["It spins happily as noodle steam swirls", "orbit left", ["giggle", "hiss"]],
+      ["Final pose: full belly, triumphant wave", "pull back", ["sigh", "pop"]],
+    ];
+    return {
+      title: "Offline storyboard: " + concept.slice(0, 60),
+      style,
+      narration: "An untold tale of " + concept.slice(0, 80) + ".",
+      shots: beats.map(([scene, camera, sfx], i) => ({
+        id: "shot_" + String(i + 1).padStart(2, "0"),
+        duration_sec: 3,
+        scene, camera,
+        visual_prompt: `${scene}, ${style}, ${concept}, consistent character design, wide shot`,
+        sfx: sfx.map((n) => ({ name: n, description: n })),
+      })),
+      offline: true,
+    };
+  }
+
+  const SYSTEM = "You are a film director and concept artist. You convert a short idea into a shot-by-shot storyboard for a short animated clip. You answer with a single JSON object and nothing else.";
+  function userPrompt(concept) {
+    return `Idea: ${concept}
+
+Return a JSON object with exactly this shape:
+{"title":"...","style":"one-line art direction","narration":"1-2 sentence voiceover",
+ "shots":[{"id":"shot_01","duration_sec":3,"scene":"...","camera":"...",
+           "visual_prompt":"self-contained image prompt repeating the style",
+           "sfx":[{"name":"squish","description":"wet rubbery squish"}]}]}
+
+Rules: 4-6 shots, durations 2-5 seconds, every visual_prompt repeats the style
+string verbatim, each shot has 1-3 sfx entries with concrete descriptions.`;
+  }
+
+  function extractJSON(text) {
+    const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (fenced) text = fenced[1];
+    const s = text.indexOf("{"), e = text.lastIndexOf("}");
+    if (s === -1 || e === -1) throw new Error("no JSON in reply: " + text.slice(0, 120));
+    return JSON.parse(text.slice(s, e + 1));
+  }
+
+  function renderShots(sb) {
+    const box = $("shots");
+    box.innerHTML = "";
+    (sb.shots || []).forEach((shot, i) => {
+      const card = document.createElement("div");
+      card.className = "shot";
+      card.style.animationDelay = (i * 60) + "ms";
+      const sfx = (shot.sfx || [])
+        .map((c) => `<span title="${(c.description || "").replace(/"/g, "&quot;")}">${c.name || "sfx"}</span>`)
+        .join("");
+      card.innerHTML = `
+        <div class="sid">${shot.id || "shot"} · ${shot.duration_sec || 3}s</div>
+        <div class="scene"></div>
+        <div class="cam">${shot.camera || ""}</div>
+        <div class="prompt"></div>
+        <div class="sfx">${sfx}</div>`;
+      card.querySelector(".scene").textContent = shot.scene || "";
+      card.querySelector(".prompt").textContent = shot.visual_prompt || "";
+      box.appendChild(card);
+    });
+  }
+
+  let storyboard = null;
+
+  $("run").addEventListener("click", async () => {
+    const concept = $("concept").value.trim() || "an untitled idea";
+    const key = KEY_FIELD.value.trim();
+    const btn = $("run");
+    btn.disabled = true;
+    $("shots").innerHTML = "";
+
+    if (!key) {
+      log("no key set — generating offline sample storyboard", "info");
+      await new Promise((r) => setTimeout(r, 250));
+      storyboard = sampleStoryboard(concept);
+      renderShots(storyboard);
+      log(`done: "${storyboard.title}" (${storyboard.shots.length} shots). Add a key for a live Director call.`, "ok");
+      btn.disabled = false;
+      return;
+    }
+
+    localStorage.setItem("nim_api_key", key);
+    log(`POST chat/completions · model=${modelField.value.trim()}`, "info");
+    try {
+      const resp = await fetch("https://integrate.api.nvidia.com/v1/chat/completions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: "Bearer " + key },
+        body: JSON.stringify({
+          model: modelField.value.trim(),
+          messages: [
+            { role: "system", content: SYSTEM },
+            { role: "user", content: userPrompt(concept) },
+          ],
+          temperature: 0.7,
+          response_format: { type: "json_object" },
+        }),
+      });
+      if (!resp.ok) {
+        const body = await resp.text();
+        throw new Error(`HTTP ${resp.status} — ${body.slice(0, 220)}`);
+      }
+      const data = await resp.json();
+      storyboard = extractJSON(data.choices[0].message.content);
+      renderShots(storyboard);
+      log(`done: "${storyboard.title}" — ${storyboard.shots.length} shots from ${modelField.value.trim()}`, "ok");
+    } catch (err) {
+      log("director failed: " + err.message, "err");
+      log("if this is a CORS/network block in the browser, run the local pipeline instead — it uses the identical call", "info");
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  $("still").addEventListener("click", async () => {
+    const key = KEY_FIELD.value.trim();
+    if (!storyboard) { log("generate a storyboard first", "err"); return; }
+    if (!key) { log("rendering stills needs a key (and the local pipeline handles image routes best)", "err"); return; }
+    const shot = storyboard.shots[0];
+    log(`POST ai.api.nvidia.com/v1/genai/black-forest-labs/flux.1-schnell · ${shot.id}`, "info");
+    try {
+      const resp = await fetch("https://ai.api.nvidia.com/v1/genai/black-forest-labs/flux.1-schnell", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: "Bearer " + key },
+        body: JSON.stringify({ prompt: shot.visual_prompt, steps: 4, seed: 0 }),
+      });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status} — ${(await resp.text()).slice(0, 200)}`);
+      const ctype = resp.headers.get("content-type") || "";
+      let url;
+      if (ctype.startsWith("image/")) {
+        url = URL.createObjectURL(await resp.blob());
+      } else {
+        const data = await resp.json();
+        const item = data.data && data.data[0];
+        const b64 = (data.artifacts && data.artifacts[0] && data.artifacts[0].base64) || (item && item.b64_json);
+        if (b64) url = "data:image/png;base64," + b64;
+        else if (item && item.url) url = item.url;
+        else throw new Error("unrecognized image response shape");
+      }
+      log("still ready — opening in a new tab", "ok");
+      window.open(url, "_blank", "noopener");
+    } catch (err) {
+      log("image call failed: " + err.message, "err");
+      log("browser image calls are frequently CORS-blocked; the local --live pipeline renders the same model", "info");
+    }
+  });
+
+  $("copyBtn").addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText($("cmds").innerText);
+      $("copyBtn").textContent = "copied ✓";
+      setTimeout(() => ($("copyBtn").textContent = "copy"), 1600);
+    } catch (_) { /* clipboard unavailable */ }
+  });
+})();
+</script>
+</body>
+</html>
