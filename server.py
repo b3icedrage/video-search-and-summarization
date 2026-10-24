@@ -59,12 +59,20 @@ class Handler(BaseHTTPRequestHandler):
     server_version = "NIMStudio/1.0"
 
     # ---------- helpers ----------
+    CORS = {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    }
+
     def _json(self, status: int, obj: dict) -> None:
         body = json.dumps(obj).encode()
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
+        for k, v in self.CORS.items():
+            self.send_header(k, v)
         self.end_headers()
         self.wfile.write(body)
 
@@ -72,8 +80,16 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(status)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(data)))
+        for k, v in self.CORS.items():
+            self.send_header(k, v)
         self.end_headers()
         self.wfile.write(data)
+
+    def do_OPTIONS(self) -> None:  # noqa: N802
+        self.send_response(204)
+        for k, v in self.CORS.items():
+            self.send_header(k, v)
+        self.end_headers()
 
     def _auth(self) -> str | None:
         """Client override if the site sent one, else the server key."""

@@ -511,6 +511,28 @@ string verbatim, each shot has 1-3 sfx entries with concrete descriptions.`;
 
   let storyboard = null;
 
+  // One retry when the preview edge blips (dropped connection, non-JSON 404, 5xx).
+  // A real API error comes back as application/json and is NOT retried.
+  async function apiPost(path, body, headers) {
+    const attempt = () => fetch(path, { method: "POST", headers, body: JSON.stringify(body) });
+    let resp;
+    try {
+      resp = await attempt();
+    } catch (err) {
+      log("connection dropped — retrying once", "info");
+      await new Promise((r) => setTimeout(r, 1500));
+      return attempt();
+    }
+    const ctype = resp.headers.get("content-type") || "";
+    const edgeBlip = resp.status >= 502 || (resp.status === 404 && !ctype.includes("json"));
+    if (edgeBlip) {
+      log(`edge returned HTTP ${resp.status} — retrying once`, "info");
+      await new Promise((r) => setTimeout(r, 1500));
+      resp = await attempt();
+    }
+    return resp;
+  }
+
   $("run").addEventListener("click", async () => {
     const concept = $("concept").value.trim() || "an untitled idea";
     const key = KEY_FIELD.value.trim();
@@ -524,17 +546,13 @@ string verbatim, each shot has 1-3 sfx entries with concrete descriptions.`;
 
     log(`POST /api/storyboard · model=${modelField.value.trim()}`, "info");
     try {
-      const resp = await fetch("/api/storyboard", {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
+      const resp = await apiPost("/api/storyboard", {
           model: modelField.value.trim(),
           messages: [
             { role: "system", content: SYSTEM },
             { role: "user", content: userPrompt(concept) },
           ],
-        }),
-      });
+        }, headers);
       if (!resp.ok) {
         const body = await resp.text();
         throw new Error(`HTTP ${resp.status} — ${body.slice(0, 220)}`);
@@ -565,11 +583,7 @@ string verbatim, each shot has 1-3 sfx entries with concrete descriptions.`;
     if (key) headers.Authorization = "Bearer " + key;
     log(`POST /api/image (flux.1-dev) · ${shot.id}`, "info");
     try {
-      const resp = await fetch("/api/image", {
-        method: "POST",
-        headers,
-        body: JSON.stringify({ prompt: shot.visual_prompt, steps: 20, seed: 0 }),
-      });
+      const resp = await apiPost("/api/image", { prompt: shot.visual_prompt, steps: 20, seed: 0 }, headers);
       const ctype = resp.headers.get("content-type") || "";
       if (!resp.ok || !ctype.startsWith("image/")) {
         let msg = `HTTP ${resp.status}`;
@@ -591,11 +605,11 @@ string verbatim, each shot has 1-3 sfx entries with concrete descriptions.`;
     if (key) headers.Authorization = "Bearer " + key;
     log("POST /api/tts (magpie) · " + (storyboard.narration || storyboard.title).slice(0, 60), "info");
     try {
-      const resp = await fetch("/api/tts", {
-        method: "POST",
-        headers,
-        body: JSON.stringify({ text: storyboard.narration || storyboard.title || "Hello." }),
-      });
+      const resp = await apiPost(
+        "/api/tts",
+        { text: storyboard.narration || storyboard.title || "Hello." },
+        headers
+      );
       if (!resp.ok) throw new Error(`HTTP ${resp.status} — ${(await resp.text()).slice(0, 200)}`);
       const audio = new Audio(URL.createObjectURL(await resp.blob()));
       await audio.play();
