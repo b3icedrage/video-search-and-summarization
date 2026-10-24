@@ -16,12 +16,14 @@ API_KEY = os.environ.get("NVIDIA_API_KEY", "")
 
 # Chat models (OpenAI-compatible). Used by the Director layer.
 CHAT_BASE = os.environ.get("NIM_CHAT_BASE", "https://integrate.api.nvidia.com/v1")
-DIRECTOR_MODEL = os.environ.get("DIRECTOR_MODEL", "meta/llama-3.3-70b-instruct")
+DIRECTOR_MODEL = os.environ.get("DIRECTOR_MODEL", "meta/llama-3.2-11b-vision-instruct")
+# NOTE: the hosted catalog rotates. Probe GET {CHAT_BASE}/models with your key
+# before choosing; many familiar IDs now 404 or hang for a given account.
 
 # Image models live on a different route family than chat.
 IMAGE_BASE = os.environ.get("NIM_IMAGE_BASE", "https://ai.api.nvidia.com/v1/genai")
-IMAGE_MODEL = os.environ.get("IMAGE_MODEL", "black-forest-labs/flux.1-schnell")
-# Alternatives: "stabilityai/stable-diffusion-xl"
+IMAGE_MODEL = os.environ.get("IMAGE_MODEL", "black-forest-labs/flux.1-dev")
+# flux.1-dev requires steps >= 5 (payload built in visual._payload)
 
 # Optional narration (speech only; SFX stay as written descriptions).
 TTS_URL = os.environ.get(

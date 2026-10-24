@@ -41,13 +41,19 @@ via env vars, nothing else:
 
 | Layer   | Endpoint | Default model | Override |
 |---------|----------|---------------|----------|
-| Director | `integrate.api.nvidia.com/v1/chat/completions` | `meta/llama-3.3-70b-instruct` | `DIRECTOR_MODEL`, or `--model` |
-| Visual   | `ai.api.nvidia.com/v1/genai/{model}` | `black-forest-labs/flux.1-schnell` | `IMAGE_MODEL`, or `--image-model` |
+| Director | `integrate.api.nvidia.com/v1/chat/completions` | `meta/llama-3.2-11b-vision-instruct` | `DIRECTOR_MODEL`, or `--model` |
+| Visual   | `ai.api.nvidia.com/v1/genai/{model}` | `black-forest-labs/flux.1-dev` | `IMAGE_MODEL`, or `--image-model` |
 | Audio    | NVCF `…/v1/audio/synthesize` (Magpie TTS) | `Magpie-Multilingual.EN-US.Aria` | `NIM_TTS_URL`, `TTS_VOICE` |
 
-Alternatives worth trying: `meta/llama-3.1-70b-instruct`,
-`nvidia/llama-3.3-nemotron-super-49b-v1.5` (director),
-`stabilityai/stable-diffusion-xl` (visual). One key covers all calls.
+**The hosted catalog rotates — probe before you pick.** `GET /v1/models` on the
+chat base with your key lists what *might* exist, but many IDs are listed while
+being unroutable for a given account: they either 404 (`Function … Not found for
+account`) or silently hang. Proven live on a fresh key (Oct 2026): `meta/llama-3.2-11b-vision-instruct`,
+`openai/gpt-oss-20b`, `minimaxai/minimax-m3.1-flash`, `meta/muse-glimmer-30b`,
+and `black-forest-labs/flux.1-dev` (image, `steps >= 5`, returns
+`artifacts[0].base64`). Proven dead: `meta/llama-3.3-70b-instruct`,
+`meta/llama-3.1-8b-instruct` (410 EOL), `meta/llama-3.2-90b-vision-instruct`
+(hangs), SDXL and `flux.1-schnell` (404/hang).
 
 ## Honest scope notes
 

@@ -26,7 +26,7 @@ def _payload(prompt: str, seed: int) -> dict:
             "steps": 25,
             "seed": seed,
         }
-    return {"prompt": prompt, "steps": 4, "seed": seed}
+    return {"prompt": prompt, "steps": 20, "seed": seed}
 
 
 def _decode_response(resp: requests.Response) -> bytes:

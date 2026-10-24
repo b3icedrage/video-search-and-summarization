@@ -1,6 +1,11 @@
 # Pipeline outputs
 out/
 
+# Secrets — never commit
+.env
+.env.local
+.env.*.local
+
 # Python
 __pycache__/
 *.pyc
