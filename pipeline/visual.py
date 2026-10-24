@@ -90,6 +90,9 @@ def render_frames(storyboard: dict, out_dir: str, live: bool) -> list[dict]:
             timeout=config.TIMEOUT,
         )
         image_bytes = _decode_response(resp)
+        # The model returns JPEG regardless of the extension we picked — name it right.
+        ext = ".png" if image_bytes[:4] == b"\x89PNG" else ".jpg"
+        path = os.path.join(out_dir, f"{shot['id']}{ext}")
         with open(path, "wb") as fh:
             fh.write(image_bytes)
         frames.append({"shot": shot["id"], "path": path, "source": config.IMAGE_MODEL})

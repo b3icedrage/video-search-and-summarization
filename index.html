@@ -332,15 +332,15 @@
     <div class="kicker">Playground</div>
     <h2>Direct the first act, right here</h2>
     <p class="sub">
-      The Director call runs straight from your browser. Paste a key to make a real
-      storyboard, or run the offline sample to see the shape of the output.
-      Keys stay in this browser (localStorage) and are only sent to NVIDIA.
+      The site calls its own same-origin <code style="font-family:var(--mono);font-size:13px">/api</code>
+      proxy, so the AI runs from the website with the workspace key staying on the server —
+      nothing to paste. A key typed below is only an optional override.
     </p>
 
     <div class="lab">
       <div class="lab-bar">
         <span class="tl"></span><span class="tl"></span><span class="tl"></span>
-        <span class="name">director · integrate.api.nvidia.com/v1/chat/completions</span>
+        <span class="name">site → /api/* → NVIDIA NIM (director · flux.1-dev · magpie tts)</span>
       </div>
       <div class="lab-body">
         <div class="row">
@@ -349,8 +349,8 @@
             <input type="text" id="concept" value="a curious slime monster discovers a ramen shop" />
           </div>
           <div class="field">
-            <label for="key">NVIDIA API key (nvapi-…, optional)</label>
-            <input type="password" id="key" placeholder="leave empty for the offline sample" autocomplete="off" />
+            <label for="key">API key (optional override — server key used otherwise)</label>
+            <input type="password" id="key" placeholder="leave empty to use the server key" autocomplete="off" />
           </div>
         </div>
         <div class="field">
@@ -361,7 +361,8 @@
         <div class="lab-actions">
           <button class="btn btn-primary" id="run">Generate storyboard</button>
           <button class="btn btn-ghost" id="still">Render one still (FLUX)</button>
-          <span class="note" id="mode">mode: offline sample</span>
+          <button class="btn btn-ghost" id="narrate">▶ Hear narration (TTS)</button>
+          <span class="note" id="mode">mode: server key</span>
         </div>
 
         <div class="shots" id="shots"></div>
@@ -433,8 +434,8 @@ python run_pipeline.py</span> "your idea" --live</pre>
   const modelField = $("model");
   function updateMode() {
     $("mode").textContent = KEY_FIELD.value.trim()
-      ? "mode: live · " + modelField.value.trim()
-      : "mode: offline sample";
+      ? "mode: key override · " + modelField.value.trim()
+      : "mode: server key · " + modelField.value.trim();
   }
   modelField.addEventListener("input", updateMode);
   updateMode();
@@ -517,30 +518,21 @@ string verbatim, each shot has 1-3 sfx entries with concrete descriptions.`;
     btn.disabled = true;
     $("shots").innerHTML = "";
 
-    if (!key) {
-      log("no key set — generating offline sample storyboard", "info");
-      await new Promise((r) => setTimeout(r, 250));
-      storyboard = sampleStoryboard(concept);
-      renderShots(storyboard);
-      log(`done: "${storyboard.title}" (${storyboard.shots.length} shots). Add a key for a live Director call.`, "ok");
-      btn.disabled = false;
-      return;
-    }
+    if (key) localStorage.setItem("nim_api_key", key);
+    const headers = { "Content-Type": "application/json" };
+    if (key) headers.Authorization = "Bearer " + key;
 
-    localStorage.setItem("nim_api_key", key);
-    log(`POST chat/completions · model=${modelField.value.trim()}`, "info");
+    log(`POST /api/storyboard · model=${modelField.value.trim()}`, "info");
     try {
-      const resp = await fetch("https://integrate.api.nvidia.com/v1/chat/completions", {
+      const resp = await fetch("/api/storyboard", {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: "Bearer " + key },
+        headers,
         body: JSON.stringify({
           model: modelField.value.trim(),
           messages: [
             { role: "system", content: SYSTEM },
             { role: "user", content: userPrompt(concept) },
           ],
-          temperature: 0.7,
-          response_format: { type: "json_object" },
         }),
       });
       if (!resp.ok) {
@@ -553,42 +545,63 @@ string verbatim, each shot has 1-3 sfx entries with concrete descriptions.`;
       log(`done: "${storyboard.title}" — ${storyboard.shots.length} shots from ${modelField.value.trim()}`, "ok");
     } catch (err) {
       log("director failed: " + err.message, "err");
-      log("if this is a CORS/network block in the browser, run the local pipeline instead — it uses the identical call", "info");
+      if (err instanceof TypeError) {
+        storyboard = sampleStoryboard(concept);
+        renderShots(storyboard);
+        log("server unreachable — showing the offline sample storyboard instead", "info");
+      } else {
+        log("check the server logs (freebuff-preview logs) — the site proxies through it", "info");
+      }
     } finally {
       btn.disabled = false;
     }
   });
 
   $("still").addEventListener("click", async () => {
-    const key = KEY_FIELD.value.trim();
     if (!storyboard) { log("generate a storyboard first", "err"); return; }
-    if (!key) { log("rendering stills needs a key (and the local pipeline handles image routes best)", "err"); return; }
+    const key = KEY_FIELD.value.trim();
     const shot = storyboard.shots[0];
-    log(`POST ai.api.nvidia.com/v1/genai/black-forest-labs/flux.1-dev · ${shot.id}`, "info");
+    const headers = { "Content-Type": "application/json" };
+    if (key) headers.Authorization = "Bearer " + key;
+    log(`POST /api/image (flux.1-dev) · ${shot.id}`, "info");
     try {
-      const resp = await fetch("https://ai.api.nvidia.com/v1/genai/black-forest-labs/flux.1-dev", {
+      const resp = await fetch("/api/image", {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: "Bearer " + key },
+        headers,
         body: JSON.stringify({ prompt: shot.visual_prompt, steps: 20, seed: 0 }),
       });
-      if (!resp.ok) throw new Error(`HTTP ${resp.status} — ${(await resp.text()).slice(0, 200)}`);
       const ctype = resp.headers.get("content-type") || "";
-      let url;
-      if (ctype.startsWith("image/")) {
-        url = URL.createObjectURL(await resp.blob());
-      } else {
-        const data = await resp.json();
-        const item = data.data && data.data[0];
-        const b64 = (data.artifacts && data.artifacts[0] && data.artifacts[0].base64) || (item && item.b64_json);
-        if (b64) url = "data:image/png;base64," + b64;
-        else if (item && item.url) url = item.url;
-        else throw new Error("unrecognized image response shape");
+      if (!resp.ok || !ctype.startsWith("image/")) {
+        let msg = `HTTP ${resp.status}`;
+        try { msg += " — " + (await resp.text()).slice(0, 200); } catch (_) {}
+        throw new Error(msg);
       }
+      const url = URL.createObjectURL(await resp.blob());
       log("still ready — opening in a new tab", "ok");
       window.open(url, "_blank", "noopener");
     } catch (err) {
       log("image call failed: " + err.message, "err");
-      log("browser image calls are frequently CORS-blocked; the local --live pipeline renders the same model", "info");
+    }
+  });
+
+  $("narrate").addEventListener("click", async () => {
+    if (!storyboard) { log("generate a storyboard first", "err"); return; }
+    const key = KEY_FIELD.value.trim();
+    const headers = { "Content-Type": "application/json" };
+    if (key) headers.Authorization = "Bearer " + key;
+    log("POST /api/tts (magpie) · " + (storyboard.narration || storyboard.title).slice(0, 60), "info");
+    try {
+      const resp = await fetch("/api/tts", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ text: storyboard.narration || storyboard.title || "Hello." }),
+      });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status} — ${(await resp.text()).slice(0, 200)}`);
+      const audio = new Audio(URL.createObjectURL(await resp.blob()));
+      await audio.play();
+      log("narration playing", "ok");
+    } catch (err) {
+      log("tts failed: " + err.message, "err");
     }
   });
 

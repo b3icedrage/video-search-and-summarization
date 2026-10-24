@@ -78,8 +78,22 @@ out/audio/narration.wav    voiceover (only with --live --narrate)
 out/clip.mp4               final clip (out/clip_ffmpeg.sh is the raw command)
 ```
 
-## Website
+## Website (runs the AI)
 
-`index.html` is a self-contained single file (no build step) with the pipeline
-architecture and a browser playground that can call the Director endpoint
-directly if you paste a key — open it or hit the preview.
+`index.html` + `server.py` are the website: a dependency-free Python server
+serves the page and proxies the AI through same-origin endpoints, so the key
+stays in the workspace and the browser never calls NVIDIA directly.
+
+```sh
+python3 server.py 8080       # or: freebuff-preview start
+```
+
+| Endpoint | Does |
+|----------|------|
+| `POST /api/storyboard` | Director → structured storyboard JSON |
+| `POST /api/image` | FLUX.1-dev → `image/jpeg`/`image/png` bytes |
+| `POST /api/tts` | Magpie → `audio/wav` narration |
+
+An optional key typed into the site is forwarded as an override; otherwise the
+server's `NVIDIA_API_KEY` is used. The playground also has an offline-sample
+fallback if the server is unreachable.
